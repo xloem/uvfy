@@ -1,0 +1,51 @@
+# verification of nested filesystem images
+
+
+uvfy_require_components mkdir mount umount pwd rm ln
+
+tmpdir="$(mktemp -du)"
+startpath="$(pwd)"
+mkdir -p "$tmpdir" &&
+cd "$tmpdir" || return 1
+
+index=0
+lastpath=""
+for image in "${@:?
+Usage: nested-image rootimagepath [nestedimagepath ...]}"
+do
+  if test -n "$lastimage"
+  then
+    if ! uvfy_cmdoutput mount -o loop "$lastimage" "$mntpath"
+    then
+      break
+    fi
+    lastpath="$mntpath"
+  fi
+
+  index=$((index + 1))
+  mntpath="$index"
+  mkdir -p "$mntpath"
+
+  if test -z "$lastpath"
+  then
+    if test -z "$UVFY_FULL_PATHS"
+    then
+      ln -s "$image"
+      lastimage="${image##*/}"
+    else
+      lastimage="$image"
+    fi
+  else
+    lastimage="$lastpath/$image"
+  fi
+
+  uvfy_filehashes_fullpaths "$lastimage"
+done
+while test "$index" -gt 1
+do
+  index=$((index - 1))
+  mntpath="$tmpdir"/"$index"
+  umount "$mntpath" || return 1
+done
+cd "$startpath"
+rm -rf "$tmpdir"

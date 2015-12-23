@@ -1,0 +1,11 @@
+# verification of a file and possible associated hashes or signatures
+
+filename="${1:?
+Usage: single-file filename [metadatafile[::argstogrep] ...]}"
+shift
+
+uvfy_filehashes "$filename"
+if test -n "$*"
+then
+  uvfy_filecontents "$@"
+fi

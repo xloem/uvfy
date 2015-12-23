@@ -1,0 +1,535 @@
+#!/bin/sh
+
+#### Main initialization at bottom.
+
+SCRIPTNAME="uvfy"
+uvfy_version() {
+  echo "$SCRIPTNAME 0.0.1-dev"
+}
+
+uvfy_help() {
+  echo "Usage: $SCRIPTNAME [options] script [args...] [-- script2 [args...] ...]"
+  echo "Presents file metadata chosen by each script specified."
+  echo
+  echo "  -f, --format format     Output format, currently only json supported"
+  echo "  -p, --full-paths        Output entire paths for filenames"
+  echo "      --gpg path-to-gpg   Path to gpg binary for signature verification"
+  echo "  -x, --hashes programs   Comma-separated list of checksum programs to run"
+  echo "                          when calculating hashes.  Defaults to sha512sum"
+  echo "      --help              Display this help message"
+  echo "  -V, --version           Display $SCRIPTNAME version"
+  echo "  -- script.uvfy [...]    Provide further scripts to execute"
+  echo
+  echo "--gpg and --hashes affect only the scripts following them on the command line."
+  echo
+  echo "Included scripts: "
+  for script in "$UVFY_HOME/scripts/"*.uvfy
+  do
+    script="${script##*/}"
+    echo -n " ${script%.uvfy}"
+  done
+  echo
+}
+
+#### Default configuration
+
+UVFY_OUTPUT_MODE="json"
+UVFY_GPG="gpg2"
+UVFY_HASHES="sha512sum"
+if test -z "$UVFY_HOME"
+then
+  for uvfy_possibility in \
+    "$(dirname "$(readlink -f "$(type -p $0)")")" \
+    "/usr/local/share/uvfy" "/usr/share/uvfy"
+  do
+    if test -d "$uvfy_possibility"/scripts
+    then
+      UVFY_HOME="$uvfy_possibility"
+      break
+    fi
+  done
+fi
+if ! test -d "$UVFY_HOME/scripts"
+then
+  echo "ERROR: No such directory '$UVFY_HOME/scripts'"
+  echo "       Is UVFY_HOME="$UVFY_HOME" correct?"
+  exit 2
+fi
+if ! (
+  cd "$UVFY_HOME"
+  sha512sum -c <<EOF >/dev/null
+f32e7139f4535cf990b2d58feb6bbe4551e7a0c0e7e41b762f2c175f128352107f7f7a71ce11d9ee1ef31a85b856c08d8bb531a86f8f37c82e7f62c77feee3b3  scripts/dar-backup.uvfy
+97f853e4914fd352ae445227b28f91b5ecf08af7619e15748f21b726bbbace3614aecb612320159656d53af42f198cc29fa8f2257b1e86cd792b006d52bda77c  scripts/invocation.uvfy
+60b1b12d1bb848e12b4927a444426fbf5b22b398844432f770747ccd5b684cbba3d63655d6597cdb62219051abadc5a1255f9c5113518a3f3194da3856dc843a  scripts/loop-mount.uvfy
+04a86eb1db7bef20114eb0b52530cd4abc89cc44378068cadfbcd90c5eb4c0780daa46c7e319acaafc2cf0473537cad623349b26d3c900a68ae57f0aa9ee5ddd  scripts/nested-image.uvfy
+d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
+cf239ae78b7eb58da6fbcda98b736cad9313d5b070634dfc316e441f07de3766d69af756c491ecfe858067bf9df4fde94e84d5675e1e4c0afe649cf433c37966  scripts/store-namecoin.uvfy
+EOF
+)
+then
+  echo "ERROR: Scripts failed checksum."
+  exit 2
+fi
+
+
+#### Output functions to be used by scripts
+
+uvfy_filecontents_fullpaths() {
+  cached__UVFY_FULL_PATHS="$UVFY_FULL_PATHS"
+  UVFY_FULL_PATHS=1
+  uvfy_filecontents "$@"
+  UVFY_FULL_PATHS="$cached__UVFY_FULL_PATHS"
+}
+
+uvfy_filecontents() {
+  for uvfy_filename in "$@"
+  do
+    uvfy_output_itemstart
+    if uvfy_has_grepline "$uvfy_filename"
+    then
+      uvfy_filename="$uvfy_last_without_grepline"
+      if ! uvfy_output_file_has_been_hashed "$uvfy_filename"
+      then
+        uvfy_output_file_hashes "$uvfy_filename"
+      else
+        uvfy_output_filename_element "$uvfy_filename"
+      fi
+      uvfy_output_cmd_elements grep grep $uvfy_last_grepline "$uvfy_filename" || continue
+    else
+      uvfy_output_filename_element "$uvfy_filename"
+      uvfy_output_cmd_elements content cat "$uvfy_filename" || continue
+    fi
+
+    # if filename ends in asc or sig, verify it as a signature
+    if test "${uvfy_filename%.sig}" != "$uvfy_filename" || test "${uvfy_filename%.asc}" != "$uvfy_filename"
+    then
+      if "$UVFY_GPG" --list-packets < "$uvfy_filename" > "$UVFY_OUTPUT_CMDFILE" 2>/dev/null
+      then
+        if ! grep -q 'public key packet' < "$UVFY_OUTPUT_CMDFILE"
+        then
+          if test -z "$UVFY_OUTPUT_GPG_VERSION"
+          then
+            UVFY_OUTPUT_GPG_VERSION=1
+            UVFY_OUTPUT_CMDFILTER=uvfy_output_cmdfilter_head\ -n2
+            uvfy_output_cmd_elements "gpg-version" "$UVFY_GPG" --version
+          fi
+          UVFY_OUTPUT_CMDFILTER=uvfy_output_cmdfilter_trimgpg
+          uvfy_output_cmd_elements "gpg-verify" "$UVFY_GPG" --verify "$uvfy_filename"
+          UVFY_OUTPUT_CMDFILTER=cat
+          uvfy_fingerprint="$(grep "Primary key fingerprint" "$UVFY_OUTPUT_CMDFILE")"
+          if test -n "$uvfy_fingerprint"
+          then
+            uvfy_fingerprint="${uvfy_fingerprint#Primary key fingerprint:}"
+            uvfy_fingerprint="${uvfy_fingerprint// /}"
+            uvfy_output_element "gpg-fingerprint" "$uvfy_fingerprint"
+          fi
+        fi
+      fi
+    fi
+    uvfy_output_itemend
+  done
+}
+
+uvfy_filehashes_fullpaths() {
+  cached__UVFY_FULL_PATHS="$UVFY_FULL_PATHS"
+  UVFY_FULL_PATHS=1
+  uvfy_filehashes "$@"
+  UVFY_FULL_PATHS="$cached__UVFY_FULL_PATHS"
+}
+
+uvfy_filehashes() {
+  for uvfy_filename in "$@"
+  do
+    if uvfy_output_file_has_been_hashed "$uvfy_filename"
+    then
+      continue
+    fi
+    uvfy_output_itemstart
+    uvfy_output_file_hashes "$uvfy_filename"
+    uvfy_output_itemend
+  done
+}
+
+uvfy_cmdoutput() {
+  uvfy_output_itemstart
+  if uvfy_has_grepline "$1"
+  then
+    shift
+    set -- "$uvfy_last_without_grepline" "$@"
+    UVFY_OUTPUT_CMDFILTER="grep $uvfy_last_grepline"
+    uvfy_output_array command "$@"
+    uvfy_output_cmd_elements grep "$@"
+    UVFY_OUTPUT_CMDFILTER="cat"
+  else
+    uvfy_output_array command "$@"
+    uvfy_output_cmd_elements output "$@"
+  fi
+  uvfy_exit_status=$?
+  uvfy_output_itemend
+  return $uvfy_exit_status
+}
+
+uvfy_cmdstderr() {
+  UVFY_OUTPUT_CMDCAPTURE=stderr
+  uvfy_cmdoutput
+  UVFY_OUTPUT_CMDCAPTURE=combined
+}
+
+uvfy_cmdstdout() {
+  UVFY_OUTPUT_CMDCAPTURE=stdout
+  uvfy_cmdoutput
+  UVFY_OUTPUT_CMDCAPTURE=combined
+}
+
+uvfy_invocationargsarray() {
+  uvfy_output_itemstart
+  uvfy_with_flatlist_parameters uvfy_output_array "${UVFY_FLATLIST_DELIMITER}parent-command$UVFY_FLATLIST_DELIMITER$0$UVFY_FLATLIST_DELIMITER$UVFY_OUTPUT_ARGS"
+  uvfy_output_itemend
+}
+
+
+#### internal utility functions for outputing command results
+
+UVFY_OUTPUT_CMDCAPTURE=combined
+UVFY_OUTPUT_CMDFILTER=cat
+UVFY_OUTPUT_STREAMING_MODE=tee
+UVFY_OUTPUT_PRESENTATION_MODE=none
+UVFY_OUTPUT_HASHED_FILES=
+UVFY_OUTPUT_COMMANDS_RUN=
+UVFY_FLATLIST_DELIMITER="
+"
+
+uvfy_has_grepline() {
+  uvfy_last_grepline="${1#*::}"
+  uvfy_last_without_grepline="${1%%::*}"
+  test "$uvfy_last_grepline" != "$1"
+}
+
+uvfy_in_flatlist() {
+  uvfy_value="$1"
+  uvfy_list="$2$UVFY_FLATLIST_DELIMITER"
+  test "${uvfy_list/$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER/}" != "$uvfy_list"
+}
+
+uvfy_addedto_flatlist() {
+  uvfy_value="$1"
+  uvfy_list="$2"
+  if ! uvfy_in_flatlist "$uvfy_value" "$uvfy_list"
+  then
+    echo -n "$uvfy_list$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+  else
+    echo -n "$uvfy_list"
+  fi
+}
+
+uvfy_as_flatlist() {
+  for uvfy_value in "$@"
+  do
+    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLASTLIST_DELIMITER"
+  done
+}
+
+uvfy_with_flatlist_parameters() {
+  cmd="$1"
+  shift
+  IFS="$UVFY_FLATLIST_DELIMITER"
+  set -- $*
+  unset IFS
+  "$cmd" "$@"
+}
+
+uvfy_output_file_has_been_hashed() {
+  uvfy_filename="$1"
+  if ! uvfy_in_flatlist "$uvfy_filename" "$UVFY_HASHED_FILES"
+  then
+    UVFY_HASHED_FILES="$(uvfy_addedto_flatlist "$uvfy_filename" "$UVFY_HASHED_FILES")"
+    false
+  fi
+}
+
+uvfy_output_file_hashes() {
+  uvfy_filename="$1"
+  uvfy_output_filename_element "$uvfy_filename"
+  uvfy_output_cmd_elements "size" stat -L --format=%s "$uvfy_filename"
+  UVFY_OUTPUT_CMDFILTER=uvfy_output_cmdfilter_firstword
+  IFS=','
+  set -- $UVFY_HASHES
+  unset IFS
+  uvfy_output_filecmd_elements "$uvfy_filename" "$@"
+  UVFY_OUTPUT_CMDFILTER=cat
+}
+
+
+uvfy_output_filecmd_elements() {
+  uvfy_filename="$1"
+  shift
+  for uvfy_cmd in "$@"
+  do
+    uvfy_output_cmd_elements "$uvfy_cmd" "$uvfy_cmd" <"$uvfy_filename"
+  done
+}
+
+uvfy_output_run_cmd_combined() {
+  "$@" > "$UVFY_OUTPUT_CMDFILE" 2>&1
+}
+
+uvfy_output_run_cmd_stderr() {
+  "$@" 2> "$UVFY_OUTPUT_CMDFILE"
+}
+
+uvfy_output_run_cmd_stdout() {
+  "$@" > "$UVFY_OUTPUT_CMDFILE"
+}
+
+uvfy_output_cmdfilter_firstword() {
+  read uvfy_word uvfy_rest
+  cat >/dev/null
+  echo "$uvfy_word"
+}
+
+uvfy_output_cmdfilter_head() {
+  head "$@"
+}
+
+uvfy_output_cmdfilter_trimgpg() {
+  grep -v "WARNING" |
+  grep -v "Primary key fingerprint" |
+  grep -v "There is no indication that the signature belongs to the owner" 
+}
+
+uvfy_output_cmd_elements() {
+  uvfy_label="$1"
+  shift
+  if uvfy_output_run_cmd_$UVFY_OUTPUT_CMDCAPTURE "$@"
+  then
+    uvfy_output="$($UVFY_OUTPUT_CMDFILTER < "$UVFY_OUTPUT_CMDFILE")"
+    if test -n "$uvfy_output"
+    then
+      uvfy_output_element "$uvfy_label" "$uvfy_output"
+    else
+      uvfy_output_element "exit_status" "OK"
+    fi
+  else
+    uvfy_exit_status=$?
+    uvfy_output_element "error" "$(cat "$UVFY_OUTPUT_CMDFILE")"
+    uvfy_output_element "exit_status" "$uvfy_exit_status"
+    UVFY_ERROR=$uvfy_exit_status
+    return $uvfy_exit_status
+  fi
+  return 0
+}
+
+uvfy_output_filename_element() {
+  uvfy_filename="$1"
+  if test -n "$UVFY_FULL_PATHS"
+  then
+    uvfy_output_element "filename" "$uvfy_filename"
+  else
+    uvfy_output_element "filename" "${uvfy_filename##*/}"
+  fi
+}
+
+
+
+#### output formatter functions
+
+uvfy_output_stream() {
+  uvfy_tmpfile="$(mktemp)"
+  "$@" > "$uvfy_tempfile"
+  uvfy_output_stream_$UVFY_OUTPUT_STREAMING_MODE < "$uvfy_tempfile"
+  rm "$uvfy_tempfile"
+}
+uvfy_output_stream_tee() {
+  tee -a "$UVFY_OUTPUT_FILE"
+}
+uvfy_output_present_none() {
+  true
+}
+
+uvfy_output_initialize() {
+  UVFY_OUTPUT_FILE=$(mktemp)
+  UVFY_OUTPUT_CMDFILE=$(mktemp)
+  UVFY_OUTPUT_ARGS="$(uvfy_as_flatlist "$@")"
+  uvfy_output_initialize_"$UVFY_OUTPUT_MODE"
+  uvfy_output_start 
+}
+uvfy_output_start() {
+  if test -z "$UVFY_OUTPUT_STARTED"
+  then
+    UVFY_OUTPUT_STARTED=1
+    uvfy_output_start_"$UVFY_OUTPUT_MODE"
+  fi
+}
+uvfy_output_itemstart() {
+  uvfy_output_start 
+  uvfy_output_itemstart_"$UVFY_OUTPUT_MODE"
+}
+uvfy_output_element() {
+  uvfy_output_element_"$UVFY_OUTPUT_MODE" "$@"
+}
+uvfy_output_array() {
+  uvfy_output_array_"$UVFY_OUTPUT_MODE" "$@"
+}
+uvfy_output_itemend() {
+  uvfy_output_itemend_"$UVFY_OUTPUT_MODE"
+}
+uvfy_output_end_and_present_once() {
+  cached__UVFY_OUTPUT_PRESENTATION_MODE="$UVFY_OUTPUT_PRESENTATION_MODE"
+  UVFY_OUTPUT_PRESENTATION_MODE="$1"
+  uvfy_output_end
+  UVFY_OUTPUT_PRESENTATION_MODE="$cached__UVFY_OUTPUT_PRESENTATION_MODE"
+  unset cached__UVFY_OUTPUT_PRESENTATION_MODE
+}
+uvfy_output_end() {
+  if test -n "$UVFY_OUTPUT_STARTED"
+  then
+    uvfy_output_end_"$UVFY_OUTPUT_MODE"
+    unset UVFY_OUTPUT_STARTED
+    rm "$UVFY_OUTPUT_CMDFILE"
+    cat "$UVFY_OUTPUT_FILE" | uvfy_output_present_$UVFY_OUTPUT_PRESENTATION_MODE
+    rm "$UVFY_OUTPUT_FILE"
+  fi
+  UVFY_OUTPUT_HASHED_FILES=
+  UVFY_OUTPUT_COMMANDS_RUN=
+}
+
+uvfy_json_stringify() {
+  value="${1//
+/\\n}"
+  echo -n "\"${value//\"/\\\"}\""
+}
+uvfy_output_initialize_json() {
+  true
+}
+uvfy_output_start_json() {
+  echo '['
+}
+uvfy_output_itemstart_json() {
+  echo -n "$uvfy_json_itemcomma {"
+  uvfy_json_elementcomma=''
+  uvfy_json_itemcomma=','
+}
+uvfy_output_element_json() {
+  echo "$uvfy_json_elementcomma"
+  echo -n "  $(uvfy_json_stringify "$1"):$(uvfy_json_stringify "$2")"
+  uvfy_json_elementcomma=','
+}
+uvfy_output_array_json() {
+  echo "$uvfy_json_elementcomma"
+  echo -n "  $(uvfy_json_stringify "$1"):["
+  uvfy_json_stringify "$2"
+  shift 2
+  for uvfy_json_element in "$@"
+  do
+    echo -n ','
+    uvfy_json_stringify "$uvfy_json_element"
+  done
+  echo -n ']'
+  uvfy_json_elementcomma=','
+}
+uvfy_output_itemend_json() {
+  echo
+  echo -n ' }'
+}
+uvfy_output_end_json() {
+  echo
+  echo ']'
+}
+
+
+#### Main initialization
+
+uvfy_fail_missing_components() {
+  echo 'Components required found missing.'
+  for component in $@
+  do
+    echo -n "$component: "
+    type -p "$component" || echo MISSING
+  done
+  exit 2
+}
+
+uvfy_require_components() {
+  type -p $* >/dev/null || uvfy_fail_missing_components $*
+}
+
+
+UVFY_SCRIPT=
+uvfy_append_script_argument() {
+  UVFY_SCRIPT=$(uvfy_addedto_flatlist "$*" "$UVFY_SCRIPT")
+}
+
+uvfy_runscript() {
+  if test -z "$UVFY_SCRIPT"
+  then
+    echo "ERROR: no script specified"
+    uvfy_help
+    exit 2
+  elif test -z "$*"
+  then
+    IFS="$UVFY_FLATLIST_DELIMITER"
+    set -- $UVFY_SCRIPT
+    unset IFS
+    uvfy_runscript "$@"
+    return
+  fi
+
+  (
+    IFS=','
+    set -- $UVFY_GPG $UVFY_HASHES
+    unset IFS
+    uvfy_require_components for case set unset source test echo read cat rm tee grep head stat mktemp "$@"
+  )
+
+  UVFY_SCRIPT="$1"
+  shift
+  for uvfy_possibility in "$UVFY_SCRIPT" "$UVFY_SCRIPT".uvfy "$UVFY_HOME/scripts/$UVFY_SCRIPT" "$UVFY_HOME/scripts/$UVFY_SCRIPT".uvfy
+  do
+    if test -r "$uvfy_possibility" -a -f "$uvfy_possibility"
+    then
+      UVFY_SCRIPT="$uvfy_possibility"
+      break
+    fi
+  done
+  unset uvfy_possibility
+  if test -n "$UVFY_HASH_SCRIPTS"
+  then
+    uvfy_filehashes "$UVFY_SCRIPT"
+  fi
+  if ! source "$UVFY_SCRIPT" "$@"
+  then
+    echo "ERROR: $UVFY_SCRIPT failed" 1>&2
+  fi
+  UVFY_SCRIPT=
+}
+
+
+uvfy_arg_skip=
+for uvfy_arg in "$@"
+do
+  if test -n "$uvfy_arg_skip"
+  then
+    uvfy_arg_skip=
+    continue
+  fi
+  case "$uvfy_arg" in
+    (-f|--format)     UVFY_OUTPUT_MODE="$1"; uvfy_arg_skip=1;;
+    (-p|--full-paths) UVFY_FULL_PATHS=1;;
+    (--gpg)           UVFY_GPG="$1"; uvfy_arg_skip=1;;
+    (-x|--hashes)     UVFY_HASHES="${1//,/ /}"; uvfy_arg_skip=1;;
+    (--help)          uvfy_help; exit 0;;
+    (-V|--version)    uvfy_version; exit 0;;
+    (--)              uvfy_output_initialize "$@"; uvfy_runscript;;
+    (*)               uvfy_append_script_argument "$uvfy_arg";;
+  esac
+done
+
+uvfy_output_initialize "$@"
+uvfy_runscript
+
+uvfy_output_end
+
+if test -n "$UVFY_ERROR"
+then
+  echo "!! WARNING !! some subcommands have failed !! WARNING !!" 1>&2
+fi

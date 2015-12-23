@@ -1,0 +1,3 @@
+# store verification output in the namecoin blockchain
+
+uvfy_require_components namecoin-cli

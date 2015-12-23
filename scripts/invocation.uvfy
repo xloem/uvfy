@@ -1,0 +1,6 @@
+# verification of the invocation of the uvfy script itself
+
+uvfy_invocationargsarray
+uvfy_cmdoutput "${0}" -V
+uvfy_filehashes "${0}"
+

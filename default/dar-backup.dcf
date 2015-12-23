@@ -1,0 +1,5 @@
+default:
+-q --noconf --no-overwrite
+
+create:
+--no-mount-points --compression=xz --exclude-compression=*.png --exclude-compression=*.jpg

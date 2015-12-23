@@ -1,0 +1,49 @@
+# verification of incremental backups performed with dar
+
+uvfy_require_components printf dar
+
+DAR_FS_ROOT="${1:?
+Usage: dar-backup fs-root [[basename] reference_basename]}"
+DAR_ROOTNAME="${2:-backup}"
+DAR_REFERENCE="$3"
+
+INDEX_FILE=.current_index
+DAR_CONFIGFILE="$UVFY_HOME"/default/dar-backup.dcf
+
+
+# determine backup index
+lastindex=$(test -r "$INDEX_FILE" && cat "$INDEX_FILE")
+curindex=$(echo "$lastindex" | sed 's/^0*//')
+
+if test -z "$lastindex"
+then
+  curindex=1
+else
+  curindex=$((curindex + 1))
+  if test -z "$DAR_REFERENCE"
+  then
+    if ! for DAR_REFERENCE in "${DAR_ROOTNAME}".*.dar; do false; done &&
+       test -r "$DAR_REFERENCE"
+    then
+      DAR_REFERENCE="${DAR_REFERENCE%.*.dar}"
+    else
+      unset DAR_REFERENCE
+    fi
+  fi
+fi
+index=$(printf %0.8d $curindex)
+echo $index > "$INDEX_FILE"
+DAR_BASENAME="${DAR_ROOTNAME}.$index"
+
+# log backup
+uvfy_filecontents "$INDEX_FILE"
+if test -z "$UVFY_OUTPUT_DAR_VERSION"
+then
+  UVFY_OUTPUT_DAR_VERSION=1
+  uvfy_cmdoutput dar::version -V
+  uvfy_filecontents "$DAR_CONFIGFILE"
+fi
+uvfy_cmdoutput dar -Q -B"$DAR_CONFIGFILE" -c"$DAR_BASENAME" -@"${DAR_BASENAME}.catalog" -R"$DAR_FS_ROOT" -3sha512 ${DAR_REFERENCE:+-A"$DAR_REFERENCE"}
+uvfy_cmdstderr dar -Q -B"$DAR_CONFIGFILE" -l"$DAR_BASENAME" -Txml > "${DAR_BASENAME}.xml"
+uvfy_filehashes ${DAR_REFERENCE:+"${DAR_REFERENCE}".*.dar} "$DAR_BASENAME"*.dar "$DAR_BASENAME"*.xml
+uvfy_filecontents "$DAR_BASENAME"*.dar.sha512

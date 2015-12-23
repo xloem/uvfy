@@ -1,0 +1,17 @@
+# verification of a loop mounted image
+
+uvfy_require_components df
+
+filesystem_path="${1:?
+Usage: loop-mount filesystem_path}"
+
+uvfy_cmdoutput df::/dev/loop -P "$filesystem_path"
+device="${uvfy_output%% *}"
+
+loop="${device#/dev/}"
+backing_file=/sys/devices/virtual/block/"$loop"/loop/backing_file
+uvfy_filecontents_fullpaths "$backing_file"
+backing_file="$(cat "$backing_file")"
+
+uvfy_filehashes_fullpaths "$backing_file"
+filesystem_path="$backing_file"

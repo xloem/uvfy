@@ -1,5 +1,5 @@
 default:
--q --noconf --no-overwrite
+-qNn
 
 create:
---no-mount-points --compression=xz --exclude-compression=*.png --exclude-compression=*.jpg
+-Mzxz -Z*.png -Z*.jpg

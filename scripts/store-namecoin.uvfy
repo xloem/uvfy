@@ -1,3 +1,41 @@
 # store verification output in the namecoin blockchain
 
 uvfy_require_components namecoin-cli
+
+namecoin_name="${1:?
+Usage: store-namecoin name}"
+
+#################
+# TODO: complete script
+# o Finish basic implementation of namecoin storage
+#   o Test namecoind's ability to add a new transaction without network access.
+#   o How to handle extra documents?  We can only store one document under a given name before having to
+#     wait for the network to handle the update.  Perhaps we could generate a shell script that will upload
+#     the remaining documents later?
+#   - All right, let's think of a specific scenario here.  Say we're trapped inside the bootloader, but
+#     we've mounted the root partition.  We can access namecoin in the root partition by running our own
+#     namecoind and store a pending transaction.  But unless we're going to run this bootloader namecoind the
+#     whole system run, we don't want to leave it in charge of the rest of the transactions.
+#     So it kind of sounds like some kind of cron job or init.d script could accompany this situation.
+#     Let's just generate scripts that perform the action and leave it up to the user to run them.
+#################
+
+__namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE="$UVFY_OUTPUT_PRESENTATION_MODE"
+
+uvfy_output_present_namecoin() {
+  namecoin_tmp="$UVFY_OUTPUT_TMPDIR/namecoin_value"
+  tee "$namecoin_tmp" | $__namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE
+  namecoin_value_size="$(stat --format=%s "$namecoin_tmp")"
+  if test "$namecoin_value_size" -gt 520
+  then
+    echo ERROR: document size exceeds 520 bytes
+    exit 2
+  fi
+  namecoin_value="$(cat "$namecoin_tmp")"
+  rm "$namecoin_tmp"
+  namecoin-cli name_update "$namecoin_name" "$namecoin_value"
+  case $? in
+    (0)  return 0;;
+    (*)  echo "ERROR !"; exit 2;;
+  esac
+}

@@ -1,15 +1,25 @@
 #!/bin/sh
 
 # TODO:
-# organize and generalize functions which manage split documents
-# One idea is adding formatter functions which save/restore state and provide an end-of-document state
+# o For dar, at least provide a way to break an unending chain of incremental backups
+#   o Quick bandaid -> make a complete backup if changes are significant, or time or number of backups is greater than a threshold?
+# o Investigate why -xf may produce longer document chains than -xb
+# o Add an option to present in reverse order, so that -xb can be the equal of -xf, and to account for storage display with most recent at top
+# o Port to C or some language better suited
+# o Organize and generalize functions which manage split documents; code is mixed up -> prioritize understandability (simplicity)
+#   One idea is adding formatter functions which save/restore state and provide an end-of-document state
+# o Make the inverse tool to this tool, which reads the output and checks it, filtering commands that are not deterministic
+#   This is also important because I briefly saw an issue where split documents were not properly inserted.
+# o Add a binary formatter? xml formatter?  Binary could be so tiny for namecoin, which would save money and ease use.  include plain url in binary output?
+# o Verify and enforce namecoin itself -> it must regularly produce blocks with proper difficulty that contain our documents, and provide notice otherwise
+#   This can be done here or preferably in bitcoin core itself, perhaps somebody has already.  If so link it.
+
 
 #### Main initialization at bottom.
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.0.3-dev"
-  echo "https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.0.4-dev  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -21,9 +31,10 @@ uvfy_help() {
   echo '  -p,  --full-paths        Output entire paths for filenames'
   echo '       --gpg path-to-gpg   Path to gpg binary for signature verification'
   echo '  -xb, --hash-backward     Include in each output the hash of the last'
-  echo '  -xf, --hash-forward      Inverse of -xb, uses hash of the next output'
-  echo '  -x,  --hashes programs   Comma-separated list of checksum programs to run'
-  echo '                           when calculating hashes.  Defaults to sha512sum'
+  echo '  -xf, --hash-forward      Inverse of -xb, uses hash of the next output.'
+  echo '                           More precise storage time if output saved in order.'
+  echo '  -x,  --hashes programs   Comma-separated list of checksum programs to'
+  echo '                           calculate hashes.  Default: sha512sum'
   echo '       --help              Display this help message'
   echo '  -s,  --max-size size     Split output that would exceed size'
 	echo '  -y,  --pretty            Prettify formatted output'
@@ -76,7 +87,7 @@ if ! (
 60b1b12d1bb848e12b4927a444426fbf5b22b398844432f770747ccd5b684cbba3d63655d6597cdb62219051abadc5a1255f9c5113518a3f3194da3856dc843a  scripts/loop-mount.uvfy
 04a86eb1db7bef20114eb0b52530cd4abc89cc44378068cadfbcd90c5eb4c0780daa46c7e319acaafc2cf0473537cad623349b26d3c900a68ae57f0aa9ee5ddd  scripts/nested-image.uvfy
 d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
-4bc3a9a3dddb5f2d62e2681b85c23a78c2e911a0a2ef73d0fbcaee9fe3bc74a33f92c7e14a7f74fe8065e9ca17f78929610eb6cef46bfd8bda5b71a15544a0d0  scripts/store-namecoin.uvfy
+7d5feffe04962cbeee7be9a2cc10023944a2006c2495c487b09a4c7ae50f42ff18bb0ceba99f6e93bbef7809bdcc21e25f72608bcc07496022e5e31604363555  scripts/store-namecoin.uvfy
 EOF
 )
 then
@@ -241,7 +252,7 @@ uvfy_write_cmd() {
 
 uvfy_invocationargsarray() {
   uvfy_output_itemstart
-  uvfy_with_flatlist_parameters uvfy_output_array "${UVFY_FLATLIST_DELIMITER}argv$UVFY_FLATLIST_DELIMITER$0$UVFY_FLATLIST_DELIMITER$UVFY_OUTPUT_ARGS"
+  uvfy_with_flatlist_parameters uvfy_output_array "$(uvfy_flatlist_prepended argv "$0" "$UVFY_OUTPUT_ARGS")"
   uvfy_output_itemend
 }
 
@@ -274,31 +285,40 @@ uvfy_number_unpad() {
   fi
 }
 
+uvfy_quote() {
+  echo -n "'${1//\'/\'\\\'\'}' "
+}
+
 
 uvfy_in_flatlist() {
   uvfy_value="$1"
-  uvfy_list="$2$UVFY_FLATLIST_DELIMITER"
-  test "${uvfy_list/$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER/}" != "$uvfy_list"
+  eval "set -- $2"
+  for uvfy_comparison in "$@"
+  do
+    if test "$uvfy_comparison" == "$uvfy_value"
+    then
+      return 0
+    fi
+  done
+  return 1
 }
 
 uvfy_flatlist_prepended() {
-  uvfy_value_last="$1"
+  uvfy_value="$1"
   shift
   for uvfy_value_next in "$@"
   do
-    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+    uvfy_quote "$uvfy_value"
+    uvfy_value="$uvfy_value_next"
   done
-  echo -n "$uvfy_value_next"
+  echo -n "$uvfy_value"
 }
 
 uvfy_flatlist_appended() {
   uvfy_list="$1"
   shift
   echo -n "$uvfy_list"
-  for uvfy_value in "$@"
-  do
-    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
-  done
+  uvfy_as_flatlist "$@"
 }
 
 uvfy_flatlist_added_unique() {
@@ -309,7 +329,7 @@ uvfy_flatlist_added_unique() {
   do
     if ! uvfy_in_flatlist "$uvfy_value" "$uvfy_list"
     then
-      echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+      uvfy_quote "$uvfy_value"
     fi
   done
 }
@@ -317,16 +337,15 @@ uvfy_flatlist_added_unique() {
 uvfy_as_flatlist() {
   for uvfy_value in "$@"
   do
-    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLASTLIST_DELIMITER"
+    uvfy_quote "$uvfy_value"
   done
 }
 
+# WARNING: passes $* to eval, all parameters except $1 should be uvfy_quoted
 uvfy_with_flatlist_parameters() {
   cmd="$1"
   shift
-  IFS="$UVFY_FLATLIST_DELIMITER"
-  set -- $*
-  unset IFS
+  eval "set -- $*"
   "$cmd" "$@"
 }
 
@@ -339,8 +358,9 @@ UVFY_OUTPUT_STREAMING_MODE=tee
 UVFY_OUTPUT_PRESENTATION_MODE=none
 UVFY_OUTPUT_HASHED_FILES=
 UVFY_OUTPUT_COMMANDS_RUN=
-UVFY_FLATLIST_DELIMITER="
-"
+UVFY_FLATLIST_DELIMITER='
++
+'
 
 uvfy_output_file_for_index() {
   echo "${UVFY_OUTPUT_TMPDIR}"/"$UVFY_LABEL".$(uvfy_number_pad $1 $UVFY_SKIP_DIGITS)."$UVFY_OUTPUT_MODE"
@@ -552,12 +572,6 @@ uvfy_output_itemend() {
     fi
     if test $(($(stat --format=%s "$UVFY_OUTPUT_FILE") + $(stat --format=%s "$UVFY_OUTPUT_CACHE"))) -gt $UVFY_OUTPUT_SIZE
     then
-      if ! test -s "$UVFY_OUTPUT_FILE"
-      then
-        echo "ERROR: item larger than maximum size" 1>&2
-        exit 2
-      fi
-
       if test "$UVFY_HASH_DIRECTION" == "1"
       then
         # prevent uvfy_output_end from closing the document
@@ -579,6 +593,13 @@ uvfy_output_itemend() {
       cat "$UVFY_OUTPUT_CACHE_LAST" >> "$UVFY_OUTPUT_CACHE"
       rm "$UVFY_OUTPUT_CACHE_LAST"
       unset UVFY_OUTPUT_CACHE_LAST
+
+      if test $(($(stat --format=%s "$UVFY_OUTPUT_FILE") + $(stat --format=%s "$UVFY_OUTPUT_CACHE"))) -gt $UVFY_OUTPUT_SIZE
+      then
+        echo "ERROR: item larger than maximum size, see $UVFY_OUTPUT_CACHE" 1>&2
+        exit 2
+      fi
+
     elif test -s "$UVFY_OUTPUT_FILE"
     then
       uvfy_output_stream uvfy_output_itemconnector_"$UVFY_OUTPUT_MODE"
@@ -703,7 +724,7 @@ uvfy_require_components() {
 
 UVFY_SCRIPT=
 uvfy_append_script_argument() {
-  UVFY_SCRIPT=$(uvfy_flatlist_added_unique "$UVFY_SCRIPT" "$*")
+  UVFY_SCRIPT=$(uvfy_flatlist_appended "$UVFY_SCRIPT" "$*")
 }
 
 uvfy_runscript() {
@@ -714,10 +735,7 @@ uvfy_runscript() {
     exit 2
   elif test -z "$*"
   then
-    IFS="$UVFY_FLATLIST_DELIMITER"
-    set -- $UVFY_SCRIPT
-    unset IFS
-    uvfy_runscript "$@"
+    uvfy_with_flatlist_parameters uvfy_runscript "$UVFY_SCRIPT"
     return
   fi
 
@@ -725,7 +743,7 @@ uvfy_runscript() {
     IFS=','
     set -- $UVFY_GPG $UVFY_HASHES
     unset IFS
-    uvfy_require_components for case set unset source test echo read cat rm stat mktemp date tee grep head "$@"
+    uvfy_require_components return for case set unset source eval test echo read cat rm stat mktemp date tee grep head "$@"
   )
 
   UVFY_SCRIPT="$1"

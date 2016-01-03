@@ -3,7 +3,7 @@
 uvfy_require_components chmod namecoin-cli
 
 namecoin_name="${1:?
-Usage: store-namecoin name [passwordfile-or-conffile] [namecoin-cli-options ...]}"
+Usage: store-namecoin name [passwordfile] [namecoin-cli-options ...]}"
 if test -e "$namecoin_name"
 then
   echo "WARNING: provided namecoin name '$namecoin_name' is a local file" 1>&2
@@ -16,23 +16,22 @@ then
     echo "ERROR: Cannot read from '$1'"
     exit 2
   fi
-  if grep -q "rpcpassword=" "$1"
-  then
-    namecoin_pass="-$(grep rpcpassword= "$1")"
-  else
-    namecoin_pass="-rpcpassword=$(cat $1)"
-  fi
+  namecoin_pass="-rpcpassword=$(cat $1)"
   shift
 fi
 
 __namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE="$UVFY_OUTPUT_PRESENTATION_MODE"
 UVFY_OUTPUT_PRESENTATION_MODE=namecoin
 namecoin_cli_options="$(uvfy_as_flatlist "$@")"
+if test -n "$namecoin_pass"
+then
+  namecoin_cli_options="$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass")"
+fi
 
 uvfy_namecoin_quote_args() {
   for uvfy_value in "$@"
   do
-    echo -n " '${uvfy_value//\'/\'\\'\'}'"
+    uvfy_quote "$uvfy_value"
   done
 }
 
@@ -45,10 +44,8 @@ uvfy_output_present_namecoin() {
     exit 2
   fi
   namecoin_value="$(cat "$UVFY_OUTPUT_FILE")"
-  echo -n "store-namecoin: " 2>&1
-  # debug echo line follows, remove
-  uvfy_with_flatlist_parameters echo "$(uvfy_flatlist_appended "$(uvfy_flatlist_prepended "$namecoin_cli_options" namecoin-cli)" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")"
-  uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")"
+  echo -n "store-namecoin: " 1>&2
+  uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")"
   case $? in
     (0)  return 0;;
     (25) # RPC_TRANSACTION_ERROR
@@ -56,7 +53,7 @@ uvfy_output_present_namecoin() {
       namecoin_name="${namecoin_name//'/'\"'\"'}"
       namecoin_value="${namecoin_value//'/'\"'\"'}"
       cat <<EOF >> "$namecoin_shell_script"
-while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")")
+while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")")
 do
   sleep 60
 done
@@ -65,7 +62,10 @@ EOF
       chmod 555 "$namecoin_shell_script"
       echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2
       ;;
-    (1)  echo "ERROR !" 1>&2; exit 2;;
-    (*)  echo "ERROR !" 1>&2; exit 2;;
+    (*)
+      echo "ERROR ! command was:" 1>&2
+      uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$(uvfy_flatlist_prepended namecoin-cli "$namecoin_cli_options")" name_update "$namecoin_name" "$namecoin_value")" 1>&2
+      exit 2
+      ;;
   esac
 }

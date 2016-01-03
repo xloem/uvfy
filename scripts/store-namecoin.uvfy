@@ -1,41 +1,71 @@
 # store verification output in the namecoin blockchain
 
-uvfy_require_components namecoin-cli
+uvfy_require_components chmod namecoin-cli
 
 namecoin_name="${1:?
-Usage: store-namecoin name}"
-
-#################
-# TODO: complete script
-# o Finish basic implementation of namecoin storage
-#   o Test namecoind's ability to add a new transaction without network access.
-#   o How to handle extra documents?  We can only store one document under a given name before having to
-#     wait for the network to handle the update.  Perhaps we could generate a shell script that will upload
-#     the remaining documents later?
-#   - All right, let's think of a specific scenario here.  Say we're trapped inside the bootloader, but
-#     we've mounted the root partition.  We can access namecoin in the root partition by running our own
-#     namecoind and store a pending transaction.  But unless we're going to run this bootloader namecoind the
-#     whole system run, we don't want to leave it in charge of the rest of the transactions.
-#     So it kind of sounds like some kind of cron job or init.d script could accompany this situation.
-#     Let's just generate scripts that perform the action and leave it up to the user to run them.
-#################
+Usage: store-namecoin name [passwordfile-or-conffile] [namecoin-cli-options ...]}"
+if test -e "$namecoin_name"
+then
+  echo "WARNING: provided namecoin name '$namecoin_name' is a local file" 1>&2
+fi
+shift
+if test -e "$1"
+then
+  if ! test -r "$1"
+  then
+    echo "ERROR: Cannot read from '$1'"
+    exit 2
+  fi
+  if grep -q "rpcpassword=" "$1"
+  then
+    namecoin_pass="-$(grep rpcpassword= "$1")"
+  else
+    namecoin_pass="-rpcpassword=$(cat $1)"
+  fi
+  shift
+fi
 
 __namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE="$UVFY_OUTPUT_PRESENTATION_MODE"
+UVFY_OUTPUT_PRESENTATION_MODE=namecoin
+namecoin_cli_options="$(uvfy_as_flatlist "$@")"
+
+uvfy_namecoin_quote_args() {
+  for uvfy_value in "$@"
+  do
+    echo -n " '${uvfy_value//\'/\'\\'\'}'"
+  done
+}
 
 uvfy_output_present_namecoin() {
-  namecoin_tmp="$UVFY_OUTPUT_TMPDIR/namecoin_value"
-  tee "$namecoin_tmp" | $__namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE
-  namecoin_value_size="$(stat --format=%s "$namecoin_tmp")"
+  uvfy_output_present_$__namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE
+  namecoin_value_size="$(stat --format=%s "$UVFY_OUTPUT_FILE")"
   if test "$namecoin_value_size" -gt 520
   then
     echo ERROR: document size exceeds 520 bytes
     exit 2
   fi
-  namecoin_value="$(cat "$namecoin_tmp")"
-  rm "$namecoin_tmp"
-  namecoin-cli name_update "$namecoin_name" "$namecoin_value"
+  namecoin_value="$(cat "$UVFY_OUTPUT_FILE")"
+  echo -n "store-namecoin: " 2>&1
+  # debug echo line follows, remove
+  uvfy_with_flatlist_parameters echo "$(uvfy_flatlist_appended "$(uvfy_flatlist_prepended "$namecoin_cli_options" namecoin-cli)" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")"
+  uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")"
   case $? in
     (0)  return 0;;
-    (*)  echo "ERROR !"; exit 2;;
+    (25) # RPC_TRANSACTION_ERROR
+      namecoin_shell_script=namecoin_"${UVFY_OUTPUT_FILE##*/}".sh
+      namecoin_name="${namecoin_name//'/'\"'\"'}"
+      namecoin_value="${namecoin_value//'/'\"'\"'}"
+      cat <<EOF >> "$namecoin_shell_script"
+while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass" name_update "$namecoin_name" "$namecoin_value")")
+do
+  sleep 60
+done
+rm -f "\$(type -p "\$0")"
+EOF
+      chmod 555 "$namecoin_shell_script"
+      echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2
+      ;;
+    (1)  echo "ERROR !" 1>&2; exit 2;;
+    (*)  echo "ERROR !" 1>&2; exit 2;;
   esac
 }

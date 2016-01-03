@@ -8,7 +8,8 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.0.2-dev"
+  echo "$SCRIPTNAME 0.0.3-dev"
+  echo "https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -27,7 +28,8 @@ uvfy_help() {
   echo '  -s,  --max-size size     Split output that would exceed size'
 	echo '  -y,  --pretty            Prettify formatted output'
   echo '  -V,  --version           Display $SCRIPTNAME version'
-  echo '  -- script.uvfy [...]    Provide further scripts to execute'
+  echo '  -- script.uvfy [...]    Provide further scripts to execute.'
+  echo '                          Note that -- is required between scripts'
   echo
   echo 'Options affect only the scripts following them on the command line.'
   echo
@@ -42,7 +44,7 @@ uvfy_help() {
 
 #### Default configuration
 
-UVFY_LABEL="uvfy"
+UVFY_BASE_LABEL="uvfy"
 UVFY_OUTPUT_MODE="json"
 UVFY_GPG="gpg2"
 UVFY_HASHES="sha512sum"
@@ -50,7 +52,7 @@ UVFY_SKIP_DIGITS="2"
 if test -z "$UVFY_HOME"
 then
   for uvfy_possibility in \
-    "$(dirname "$(readlink -f "$(type -p $0)")")" \
+    "$(dirname "$(readlink -f "$(type -p "$0")")")" \
     "/usr/local/share/uvfy" "/usr/share/uvfy"
   do
     if test -d "$uvfy_possibility"/scripts
@@ -62,23 +64,23 @@ then
 fi
 if ! test -d "$UVFY_HOME/scripts"
 then
-  echo "ERROR: No such directory '$UVFY_HOME/scripts'"
-  echo "       Is UVFY_HOME="$UVFY_HOME" correct?"
+  echo "ERROR: No such directory '$UVFY_HOME/scripts'" 1>&2
+  echo "       Is UVFY_HOME="$UVFY_HOME" correct?" 1>&2
   exit 2
 fi
 if ! (
   cd "$UVFY_HOME"
   sha512sum -c <<EOF >/dev/null
-5002e876549bf78c3c115902b84cd9874af5d27626405b8789524c631b2040d544b1f94dc230c0ebb1d5285a7beee35544db93728eeecd1a7e95c7ae9f17d8f1  scripts/dar-backup.uvfy
+90762ba81d39ef7911fc22cc634f1d1e99c382b0e92ed55b0a6b0641f170c203ec124afaaa19fa29b5cc2cca2a3e17f6b5399b84179a79ced7736c4dec68a36b  scripts/dar-backup.uvfy
 97f853e4914fd352ae445227b28f91b5ecf08af7619e15748f21b726bbbace3614aecb612320159656d53af42f198cc29fa8f2257b1e86cd792b006d52bda77c  scripts/invocation.uvfy
 60b1b12d1bb848e12b4927a444426fbf5b22b398844432f770747ccd5b684cbba3d63655d6597cdb62219051abadc5a1255f9c5113518a3f3194da3856dc843a  scripts/loop-mount.uvfy
 04a86eb1db7bef20114eb0b52530cd4abc89cc44378068cadfbcd90c5eb4c0780daa46c7e319acaafc2cf0473537cad623349b26d3c900a68ae57f0aa9ee5ddd  scripts/nested-image.uvfy
 d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
-1ca7939857efa9864c1074849f05da1cd33a274e0433c4018c248d7ad3dc72ba2fc9026060ad6991cebe5c44da2724479fdc8682678adc806af2c2098be693c1  scripts/store-namecoin.uvfy
+4bc3a9a3dddb5f2d62e2681b85c23a78c2e911a0a2ef73d0fbcaee9fe3bc74a33f92c7e14a7f74fe8065e9ca17f78929610eb6cef46bfd8bda5b71a15544a0d0  scripts/store-namecoin.uvfy
 EOF
 )
 then
-  echo "ERROR: Scripts failed checksum."
+  echo "ERROR: Scripts failed checksum." 1>&2
   exit 2
 fi
 
@@ -279,15 +281,37 @@ uvfy_in_flatlist() {
   test "${uvfy_list/$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER/}" != "$uvfy_list"
 }
 
-uvfy_addedto_flatlist() {
-  uvfy_value="$1"
-  uvfy_list="$2"
-  if ! uvfy_in_flatlist "$uvfy_value" "$uvfy_list"
-  then
-    echo -n "$uvfy_list$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
-  else
-    echo -n "$uvfy_list"
-  fi
+uvfy_flatlist_prepended() {
+  uvfy_value_last="$1"
+  shift
+  for uvfy_value_next in "$@"
+  do
+    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+  done
+  echo -n "$uvfy_value_next"
+}
+
+uvfy_flatlist_appended() {
+  uvfy_list="$1"
+  shift
+  echo -n "$uvfy_list"
+  for uvfy_value in "$@"
+  do
+    echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+  done
+}
+
+uvfy_flatlist_added_unique() {
+  uvfy_list="$1"
+  shift
+  echo -n "$uvfy_list"
+  for uvfy_value in "$@"
+  do
+    if ! uvfy_in_flatlist "$uvfy_value" "$uvfy_list"
+    then
+      echo -n "$UVFY_FLATLIST_DELIMITER$uvfy_value$UVFY_FLATLIST_DELIMITER"
+    fi
+  done
 }
 
 uvfy_as_flatlist() {
@@ -319,7 +343,7 @@ UVFY_FLATLIST_DELIMITER="
 "
 
 uvfy_output_file_for_index() {
-  echo "${UVFY_OUTPUT_TMPDIR}"/"$UVFY_LABEL"-$(uvfy_number_pad $1 $UVFY_SKIP_DIGITS)."$UVFY_OUTPUT_MODE"
+  echo "${UVFY_OUTPUT_TMPDIR}"/"$UVFY_LABEL".$(uvfy_number_pad $1 $UVFY_SKIP_DIGITS)."$UVFY_OUTPUT_MODE"
 }
 
 uvfy_output_file_no_index() {
@@ -336,7 +360,7 @@ uvfy_output_file_has_been_hashed() {
   uvfy_filename="$1"
   if ! uvfy_in_flatlist "$uvfy_filename" "$UVFY_HASHED_FILES"
   then
-    UVFY_HASHED_FILES="$(uvfy_addedto_flatlist "$uvfy_filename" "$UVFY_HASHED_FILES")"
+    UVFY_HASHED_FILES="$(uvfy_flatlist_added_unique "$UVFY_HASHED_FILES" "$uvfy_filename")"
     false
   fi
 }
@@ -458,6 +482,7 @@ uvfy_output_initialize() {
   UVFY_OUTPUT_CMDFILE="${UVFY_OUTPUT_TMPDIR}/cmd_output"
   UVFY_OUTPUT_CMDFILE_AUX="${UVFY_OUTPUT_TMPDIR}/cmd_output_aux"
   UVFY_OUTPUT_ARGS="$(uvfy_as_flatlist "$@")"
+  UVFY_LABEL="${UVFY_BASE_LABEL}-$(date +%s)"
   uvfy_output_initialize_"$UVFY_OUTPUT_MODE"
 }
 uvfy_output_start() {
@@ -529,7 +554,7 @@ uvfy_output_itemend() {
     then
       if ! test -s "$UVFY_OUTPUT_FILE"
       then
-        echo "ERROR: item larger than maximum size"
+        echo "ERROR: item larger than maximum size" 1>&2
         exit 2
       fi
 
@@ -571,7 +596,7 @@ uvfy_output_end() {
   unset UVFY_OUTPUT_STARTED
   if test "$UVFY_HASH_DIRECTION" != 1
   then
-    cat "$UVFY_OUTPUT_FILE" | uvfy_output_present_$UVFY_OUTPUT_PRESENTATION_MODE
+    uvfy_output_present_$UVFY_OUTPUT_PRESENTATION_MODE
     echo
   elif test -z "$1"
   then
@@ -591,7 +616,7 @@ uvfy_output_end() {
     do
       cat "$UVFY_OUTPUT_FILE" # emulates tee
       echo
-      cat "$UVFY_OUTPUT_FILE" | uvfy_output_present_$UVFY_OUTPUT_PRESENTATION_MODE
+      uvfy_output_present_$UVFY_OUTPUT_PRESENTATION_MODE
       UVFY_OUTPUT_INDEX=$((UVFY_OUTPUT_INDEX + 1))
       UVFY_OUTPUT_FILE="$(uvfy_output_file_for_index $UVFY_OUTPUT_INDEX)"
     done
@@ -623,7 +648,7 @@ uvfy_output_initialize_json() {
 	fi
 }
 uvfy_output_start_json() {
-  echo -n "[$UVFY_JSON_LINEBREAK"
+  echo -n "[\"${UVFY_OUTPUT_FILE##*/}\",$UVFY_JSON_LINEBREAK"
 }
 uvfy_output_itemconnector_json() {
   echo -n ",$UVFY_JSON_LINEBREAK"
@@ -662,11 +687,11 @@ uvfy_output_end_json() {
 #### Main initialization
 
 uvfy_fail_missing_components() {
-  echo 'Components required found missing.'
+  echo 'Components required found missing.' 1>&2
   for component in $@
   do
     echo -n "$component: "
-    type -p "$component" || echo MISSING
+    type -p "$component" || echo MISSING 1>&2
   done
   exit 2
 }
@@ -678,13 +703,13 @@ uvfy_require_components() {
 
 UVFY_SCRIPT=
 uvfy_append_script_argument() {
-  UVFY_SCRIPT=$(uvfy_addedto_flatlist "$*" "$UVFY_SCRIPT")
+  UVFY_SCRIPT=$(uvfy_flatlist_added_unique "$UVFY_SCRIPT" "$*")
 }
 
 uvfy_runscript() {
   if test -z "$UVFY_SCRIPT"
   then
-    echo "ERROR: no script specified"
+    echo "ERROR: no script specified" 1>&2
     uvfy_help
     exit 2
   elif test -z "$*"
@@ -700,7 +725,7 @@ uvfy_runscript() {
     IFS=','
     set -- $UVFY_GPG $UVFY_HASHES
     unset IFS
-    uvfy_require_components for case set unset source test echo read cat rm tee grep head stat mktemp "$@"
+    uvfy_require_components for case set unset source test echo read cat rm stat mktemp date tee grep head "$@"
   )
 
   UVFY_SCRIPT="$1"
@@ -749,7 +774,7 @@ do
   else
     case "$uvfy_last_arg" in
       (-f|--format)         UVFY_OUTPUT_MODE="$uvfy_arg";;
-      (-l|--label)          UVFY_LABEL="$uvfy_arg";;
+      (-l|--label)          UVFY_BASE_LABEL="$uvfy_arg";;
       (--gpg)               UVFY_GPG="$uvfy_arg";;
       (-x|--hashes)         UVFY_HASHES="${uvfy_arg//,/ /}";;
       (-s|--max-size)       UVFY_OUTPUT_SIZE="$uvfy_arg";;

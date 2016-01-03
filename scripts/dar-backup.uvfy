@@ -4,37 +4,21 @@ uvfy_require_components dar sha512sum
 
 DAR_FS_ROOT="${1:?
 Usage: dar-backup fs-root}"
-DAR_ROOTNAME="$UVFY_LABEL"
+DAR_BASENAME="${UVFY_LABEL}"
 DAR_REFERENCE=""
 DAR_OPTIONS="-QNn"
 DAR_CREATE_OPTIONS="-qMzxz -Z*.png -Z*.jpg -Z*.bz2 -Z*.gz"
 
-INDEX_FILE=.current_index_"$UVFY_LABEL"
-
-
-# determine backup index
-lastindex=$(test -r "$INDEX_FILE" && cat "$INDEX_FILE")
-curindex=$(uvfy_number_unpad "$lastindex")
-
-if test -z "$lastindex"
+if test -z "$DAR_REFERENCE"
 then
-  curindex=1
-else
-  curindex=$((curindex + 1))
-  if test -z "$DAR_REFERENCE"
+  if ! for DAR_REFERENCE in "${UVFY_BASE_LABEL}".*.dar; do false; done &&
+     test -r "$DAR_REFERENCE"
   then
-    if ! for DAR_REFERENCE in "${DAR_ROOTNAME}".*.dar; do false; done &&
-       test -r "$DAR_REFERENCE"
-    then
-      DAR_REFERENCE="${DAR_REFERENCE%.*.dar}"
-    else
-      unset DAR_REFERENCE
-    fi
+    DAR_REFERENCE="${DAR_REFERENCE%.*.dar}"
+  else
+    unset DAR_REFERENCE
   fi
 fi
-index=$(uvfy_number_pad "$curindex" 5)
-echo $index > "$INDEX_FILE"
-DAR_BASENAME="${DAR_ROOTNAME}.$index"
 
 # log backup
 if test -z "$UVFY_OUTPUT_DAR_VERSION"

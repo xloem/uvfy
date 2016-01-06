@@ -1,5 +1,11 @@
 # verification of the invocation of the uvfy script itself
 
+if test $# -ne 0
+then
+  echo "invocation takes no options" 1>&2
+  exit 2
+fi
+
 uvfy_invocationargsarray
 uvfy_cmdoutput "${0}" -V
 uvfy_filehashes "${0}"

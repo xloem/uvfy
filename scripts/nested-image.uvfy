@@ -1,12 +1,11 @@
 # verification of nested filesystem images
 
 
-uvfy_require_components mkdir mount umount pwd rm ln
+uvfy_require_components mkdir mount umount pwd rm ln readlink
 
 tmpdir="$(mktemp -du)"
 startpath="$(pwd)"
-mkdir -p "$tmpdir" &&
-cd "$tmpdir" || return 1
+mkdir -p "$tmpdir"
 
 index=0
 lastpath=""
@@ -20,6 +19,9 @@ do
       break
     fi
     lastpath="$mntpath"
+  else
+    image="$(readlink -f "$image")"
+    cd "$tmpdir" || return 1
   fi
 
   index=$((index + 1))

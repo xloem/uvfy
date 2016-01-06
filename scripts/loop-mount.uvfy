@@ -2,11 +2,21 @@
 
 uvfy_require_components df
 
-filesystem_path="${1:?
-Usage: loop-mount filesystem_path}"
+if test $# -ne 1
+then
+  echo "Usage: loop-mount filesystem_path" 1>&2
+  exit 2
+fi
+
+filesystem_path="$1"
 
 uvfy_cmdoutput df::/dev/loop -P "$filesystem_path"
 device="${uvfy_output%% *}"
+if test -z "$device"
+then
+  echo "ERROR: '$filesystem_path' does not appear to be a loop mount" 1>&2
+  UVFY_ERROR=1
+fi
 
 loop="${device#/dev/}"
 backing_file=/sys/devices/virtual/block/"$loop"/loop/backing_file

@@ -1,10 +1,17 @@
 #!/bin/sh
 
 # TODO:
+# o There's some encoding bug with non-ASCII characters interoperating with namecoin.  Predicted size can be
+#   invalid, resulting in uninsertable documents.
 # o For dar, at least provide a way to break an unending chain of incremental backups
 #   o Quick bandaid -> make a complete backup if changes are significant, or time or number of backups is greater than a threshold?
+# o Namecoin needs a way to notify user that the balance is insufficient.
+# o Add a script to gpg sign the documents, so that it is harder to change them
+#   while waiting on the queue, in case computer is offline -- this'll take
+#   some thought.  Only one sig needed if they have each other hashed.
 # o Investigate why -xf may produce longer document chains than -xb
-# o Add an option to present in reverse order, so that -xb can be the equal of -xf, and to account for storage display with most recent at top
+# o Improve -xf, -xb such that the output may be presented in reverse order with -xb, and perhaps require this.  Reverse order is useful for storage
+#   that places the last item on top to be read easily.
 # o Port to C or some language better suited
 # o Organize and generalize functions which manage split documents; code is mixed up -> prioritize understandability (simplicity)
 #   One idea is adding formatter functions which save/restore state and provide an end-of-document state
@@ -19,7 +26,7 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.0.4-dev  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.0.5-dev  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -82,10 +89,10 @@ fi
 if ! (
   cd "$UVFY_HOME"
   sha512sum -c <<EOF >/dev/null
-90762ba81d39ef7911fc22cc634f1d1e99c382b0e92ed55b0a6b0641f170c203ec124afaaa19fa29b5cc2cca2a3e17f6b5399b84179a79ced7736c4dec68a36b  scripts/dar-backup.uvfy
-97f853e4914fd352ae445227b28f91b5ecf08af7619e15748f21b726bbbace3614aecb612320159656d53af42f198cc29fa8f2257b1e86cd792b006d52bda77c  scripts/invocation.uvfy
-60b1b12d1bb848e12b4927a444426fbf5b22b398844432f770747ccd5b684cbba3d63655d6597cdb62219051abadc5a1255f9c5113518a3f3194da3856dc843a  scripts/loop-mount.uvfy
-04a86eb1db7bef20114eb0b52530cd4abc89cc44378068cadfbcd90c5eb4c0780daa46c7e319acaafc2cf0473537cad623349b26d3c900a68ae57f0aa9ee5ddd  scripts/nested-image.uvfy
+9cf4ab9b01190ea1812e401c2d0bb5370064f6799d877636b093f5cf33fa8ba133e3fbf0b91d3c146f9fd30bd15e3df5be101a98ca99f71f78244059f4b775ad  scripts/dar-backup.uvfy
+e6caeed526a7fc90da5a9c6b1434523a6774b944181ca4cb7cb5a449e572b89914fe6ea76d331ca43ec46fb88a0252c4004cdff090f19b453f7377c3340ed219  scripts/invocation.uvfy
+af3041b43d82435d6a604821e8496c7c7f2500a03903f332ec5dd652cb7697b0387a1555af0918e0d8d796ae2e1a89142bcfdfdc5a5738a43182b132fa481ef9  scripts/loop-mount.uvfy
+57aafa3c20619f4d0115963db975c903c1b5bac00a7d6f9c1446ec9fcf4eddf3b7f2c5b91196c5bd1b6d3948e42403b713536a95dddf34058bff5d16e7d6044a  scripts/nested-image.uvfy
 d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
 7d5feffe04962cbeee7be9a2cc10023944a2006c2495c487b09a4c7ae50f42ff18bb0ceba99f6e93bbef7809bdcc21e25f72608bcc07496022e5e31604363555  scripts/store-namecoin.uvfy
 EOF
@@ -189,6 +196,7 @@ uvfy_filehashes() {
 }
 
 uvfy_filehashes_nosize() {
+  cached__uvfy_filename="$uvfy_filename"
   for uvfy_filename in "$@"
   do
     if uvfy_output_file_has_been_hashed "$uvfy_filename"
@@ -200,6 +208,8 @@ uvfy_filehashes_nosize() {
     uvfy_output_file_hashes "$uvfy_filename"
     uvfy_output_itemend
   done
+  uvfy_filename="$cached__uvfy_filename"
+  unset cached__uvfy_filename
 }
 
 uvfy_filehashes_nosize_nofullpaths() {
@@ -596,7 +606,7 @@ uvfy_output_itemend() {
 
       if test $(($(stat --format=%s "$UVFY_OUTPUT_FILE") + $(stat --format=%s "$UVFY_OUTPUT_CACHE"))) -gt $UVFY_OUTPUT_SIZE
       then
-        echo "ERROR: item larger than maximum size, see $UVFY_OUTPUT_CACHE" 1>&2
+        echo "ERROR: item larger than maximum size (adjusted to $UVFY_OUTPUT_SIZE), see $UVFY_OUTPUT_CACHE" 1>&2
         exit 2
       fi
 

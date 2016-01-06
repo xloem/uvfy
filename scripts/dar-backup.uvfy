@@ -2,8 +2,13 @@
 
 uvfy_require_components dar sha512sum
 
-DAR_FS_ROOT="${1:?
-Usage: dar-backup fs-root}"
+if test $# -ne 1
+then
+  echo 'Usage: dar-backup fs-root' 1>&2
+  exit 2
+fi
+
+DAR_FS_ROOT="$1"
 DAR_BASENAME="${UVFY_LABEL}"
 DAR_REFERENCE=""
 DAR_OPTIONS="-QNn"

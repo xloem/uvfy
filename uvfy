@@ -26,32 +26,32 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.1.0-dev  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.1.1-dev  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
-  echo 'Usage: $SCRIPTNAME [options] script [args...] [-- script2 [args...] ...]'
-  echo 'Presents metadata chosen by each script specified.'
+  echo "Usage: $SCRIPTNAME [options] script [args...] [-- script2 [args...] ...]"
+  echo "Presents metadata chosen by each script specified."
   echo
-  echo '  -f,  --format format     Output format, currently only json supported'
-  echo '  -l,  --label label       Output label, default "uvfy", not always used'
-  echo '  -p,  --full-paths        Output entire paths for filenames'
-  echo '       --gpg path-to-gpg   Path to gpg binary for signature verification'
-  echo '  -xb, --hash-backward     Include in each output the hash of the last'
-  echo '  -xf, --hash-forward      Inverse of -xb, uses hash of the next output.'
-  echo '                           More precise storage time if output saved in order.'
-  echo '  -x,  --hashes programs   Comma-separated list of checksum programs to'
-  echo '                           calculate hashes.  Default: sha512sum'
-  echo '       --help              Display this help message'
-  echo '  -s,  --max-size size     Split output that would exceed size'
-	echo '  -y,  --pretty            Prettify formatted output'
-  echo '  -V,  --version           Display $SCRIPTNAME version'
-  echo '  -- script.uvfy [...]    Provide further scripts to execute.'
-  echo '                          Note that -- is required between scripts'
+  echo "  -f,  --format format     Output format, currently only json supported"
+  echo "  -l,  --label label       Output label, default "uvfy", not always used"
+  echo "  -p,  --full-paths        Output entire paths for filenames"
+  echo "       --gpg path-to-gpg   Path to gpg binary for signature verification"
+  echo "  -xb, --hash-backward     Include in each output the hash of the last"
+  echo "  -xf, --hash-forward      Inverse of -xb, uses hash of the next output."
+  echo "                           More precise storage time if output saved in order."
+  echo "  -x,  --hashes programs   Comma-separated list of checksum programs to"
+  echo "                           calculate hashes.  Default: sha512sum"
+  echo "       --help              Display this help message"
+  echo "  -s,  --max-size size     Split output that would exceed size"
+	echo "  -y,  --pretty            Prettify formatted output"
+  echo "  -V,  --version           Display $SCRIPTNAME version"
+  echo "  -- script.uvfy [...]    Provide further scripts to execute."
+  echo "                          Note that -- is required between scripts"
   echo
-  echo 'Options affect only the scripts following them on the command line.'
+  echo "Options affect only the scripts following them on the command line."
   echo
-  echo 'Included scripts: '
+  echo "Included scripts: "
   for script in "$UVFY_HOME/scripts/"*.uvfy
   do
     script="${script##*/}"

@@ -12,12 +12,14 @@ DAR_FS_ROOT="$1"
 DAR_BASENAME="${UVFY_LABEL}"
 DAR_REFERENCE=""
 DAR_OPTIONS="-QNn"
+DAR_MAX_INCREMENTAL=10
 DAR_CREATE_OPTIONS="-qMzxz -Z*.png -Z*.jpg -Z*.bz2 -Z*.gz"
 
+DAR_INCREMENTAL_COUNT=0
 if test -z "$DAR_REFERENCE"
 then
-  if ! for DAR_REFERENCE in "${UVFY_BASE_LABEL}".*.dar; do false; done &&
-     test -r "$DAR_REFERENCE"
+  if ! for DAR_REFERENCE in "${UVFY_BASE_LABEL}".*.dar; do DAR_INCREMENTAL_COUNT=$((DAR_INCREMENTAL_COUNT+1)); done &&
+     test -r "$DAR_REFERENCE" -a $((DAR_INCREMENTAL_COUNT % DAR_MAX_INCREMENTAL)) -gt 0
   then
     DAR_REFERENCE="${DAR_REFERENCE%.*.dar}"
   else

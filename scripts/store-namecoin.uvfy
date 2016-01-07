@@ -44,10 +44,16 @@ uvfy_output_present_namecoin() {
     exit 2
   fi
   namecoin_value="$(cat "$UVFY_OUTPUT_FILE")"
+  namecoin_success_token="${UVFY_OUTPUT_FILE##*/}"
   echo -n "store-namecoin: " 1>&2
   uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")"
   case $? in
-    (0)  return 0;;
+    (0)
+      if uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)" | grep -q "$namecoin_success_token"
+      then
+        return 0
+      fi
+      ;;
     (25) # RPC_TRANSACTION_ERROR
       namecoin_shell_script=namecoin_"${UVFY_OUTPUT_FILE##*/}".sh
       namecoin_name="${namecoin_name//'/'\"'\"'}"
@@ -57,15 +63,14 @@ while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$
 do
   sleep 60
 done
-rm -f "\$(type -p "\$0")"
+namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)") | grep -q "$namecoin_success_token" && rm -f "\$(type -p "\$0")"
 EOF
       chmod 555 "$namecoin_shell_script"
       echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2
-      ;;
-    (*)
-      echo "ERROR ! command was:" 1>&2
-      uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$(uvfy_flatlist_prepended namecoin-cli "$namecoin_cli_options")" name_update "$namecoin_name" "$namecoin_value")" 1>&2
-      exit 2
+      return 0
       ;;
   esac
+  echo "ERROR ! command was:" 1>&2
+  uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$(uvfy_flatlist_prepended namecoin-cli "$namecoin_cli_options")" name_update "$namecoin_name" "$namecoin_value")" 1>&2
+  exit 2
 }

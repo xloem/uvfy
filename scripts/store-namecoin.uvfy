@@ -49,7 +49,8 @@ uvfy_output_present_namecoin() {
   uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")"
   case $? in
     (0)
-      if uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)" | grep -q "$namecoin_success_token"
+      if uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)" | grep -q "$namecoin_success_token" ||
+         uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_show "$namecoin_name")" | grep -q "$namecoin_success_token"
       then
         return 0
       fi
@@ -63,7 +64,9 @@ while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$
 do
   sleep 60
 done
-namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)") | grep -q "$namecoin_success_token" && rm -f "\$(type -p "\$0")"
+namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)") | grep -q "$namecoin_success_token" ||
+namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_show "$namecoin_name")") | grep -q "$namecoin_success_token" &&
+rm -f "\$(type -p "\$0")"
 EOF
       chmod 555 "$namecoin_shell_script"
       echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2

@@ -24,7 +24,7 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.2  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.2.1  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -92,7 +92,7 @@ e6caeed526a7fc90da5a9c6b1434523a6774b944181ca4cb7cb5a449e572b89914fe6ea76d331ca4
 af3041b43d82435d6a604821e8496c7c7f2500a03903f332ec5dd652cb7697b0387a1555af0918e0d8d796ae2e1a89142bcfdfdc5a5738a43182b132fa481ef9  scripts/loop-mount.uvfy
 57aafa3c20619f4d0115963db975c903c1b5bac00a7d6f9c1446ec9fcf4eddf3b7f2c5b91196c5bd1b6d3948e42403b713536a95dddf34058bff5d16e7d6044a  scripts/nested-image.uvfy
 d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
-98dddc0539dc9be3e7874deec7aeb483c2df2d580b4f3ac5eef1707133f0a45dca825c5aa254c44b289ec2cd77d8c152bb5dcc35c8c2b6b2d1fcba2ca454ae6c  scripts/store-namecoin.uvfy
+7bfdd717cf4e7c690132c79e2ce6d9f2aad8104e405a13947d468537e09e7db7eaae4dfae995a6804451bad8b624749e1ed7a45cee9cd12280b95b8a9b6a8ee7  scripts/store-namecoin.uvfy
 EOF
 )
 then

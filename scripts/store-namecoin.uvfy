@@ -13,7 +13,7 @@ if test -e "$1"
 then
   if ! test -r "$1"
   then
-    echo "ERROR: Cannot read from '$1'"
+    echo "ERROR: Cannot read from '$1'" 1>&2
     exit 2
   fi
   namecoin_pass="-rpcpassword=$(cat $1)"
@@ -26,6 +26,12 @@ namecoin_cli_options="$(uvfy_as_flatlist "$@")"
 if test -n "$namecoin_pass"
 then
   namecoin_cli_options="$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass")"
+fi
+
+if uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" getwalletinfo)" | grep '"unlocked_until": 0,'
+then
+  echo 'ERROR: Wallet is locked' 1>&2
+  exit 2
 fi
 
 uvfy_namecoin_quote_args() {

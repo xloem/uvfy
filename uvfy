@@ -24,7 +24,7 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.2.2-dev  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.2.3-dev  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -88,11 +88,13 @@ if ! (
   cd "$UVFY_HOME"
   sha512sum -c <<EOF >/dev/null
 c461613db2bb41b244259b0bdfebaeeb3a55ea4287792fe8a7ab0cc8a67876fee41d590cc4974d949a95477154ba10d30d9919c00e4bd939d9b5b11937945021  scripts/dar-backup.uvfy
+f4aabde48116db67f13b6413a396c5ee7b805f3bb2a928434741323ab47d999575b35327681ac15b77987c5da87a3a31e5261d55eb3c7e0d79d06ee20d4cff18  scripts/git-add-commit.uvfy
+c4e1bb799dd02c957c12bd2a3c005a9ba8e0950c1c8957b86887670cb7cbd467110324739e355890bade6d309f4417c7cdea42b7c56263aa3b360926efba6382  scripts/git-status.uvfy
 e6caeed526a7fc90da5a9c6b1434523a6774b944181ca4cb7cb5a449e572b89914fe6ea76d331ca43ec46fb88a0252c4004cdff090f19b453f7377c3340ed219  scripts/invocation.uvfy
 af3041b43d82435d6a604821e8496c7c7f2500a03903f332ec5dd652cb7697b0387a1555af0918e0d8d796ae2e1a89142bcfdfdc5a5738a43182b132fa481ef9  scripts/loop-mount.uvfy
 57aafa3c20619f4d0115963db975c903c1b5bac00a7d6f9c1446ec9fcf4eddf3b7f2c5b91196c5bd1b6d3948e42403b713536a95dddf34058bff5d16e7d6044a  scripts/nested-image.uvfy
 d084ec9349f108ba0ad0d1343fd84edfc5ba091b09d6a2276da5662196742d1e00bece6cb52adda4822665549f3b76f155fd3fd50ee6b0f97bc55c9d2e0b0c01  scripts/single-file.uvfy
-7bfdd717cf4e7c690132c79e2ce6d9f2aad8104e405a13947d468537e09e7db7eaae4dfae995a6804451bad8b624749e1ed7a45cee9cd12280b95b8a9b6a8ee7  scripts/store-namecoin.uvfy
+84c1b67b82e736178a940768f5e41684c0276f552f528df1762075204b64bdfa0b333aa66a0cf4c0a72fd0f468421fe5d430cfbff9f712f8d3fd43806df45cd7  scripts/store-namecoin.uvfy
 EOF
 )
 then

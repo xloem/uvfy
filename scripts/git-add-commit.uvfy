@@ -1,0 +1,12 @@
+# record adding a set of files to a git tree
+
+uvfy_require_components git
+
+if test $# -eq 0
+then
+  echo 'Usage: git-add-commit file [file ...]' 1>&2
+  exit 2
+fi
+
+uvfy_cmdoutput git add "$@"
+uvfy_cmdoutput git commit -m "${UVFY_LABEL}"

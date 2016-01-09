@@ -1,0 +1,12 @@
+# record that a git working tree differs or not from HEAD
+
+uvfy_require_components git
+
+if test $# -ne 0
+then
+  echo "git-status takes no options" 1>&2
+  exit 2
+fi
+
+uvfy_cmdoutput git rev-list --max-count=2 HEAD
+uvfy_cmdoutput git status -s

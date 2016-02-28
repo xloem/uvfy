@@ -3,21 +3,47 @@
 uvfy_require_components chmod namecoin-cli
 
 namecoin_name="${1:?
-Usage: store-namecoin name [passwordfile] [namecoin-cli-options ...]}"
+Usage: store-namecoin name [-rpcpasswordfile=passwordfile] [-spooldir=/path/to/store/scripts] [-walletpassphrasefile=passphrasefile] [namecoin-cli-options ...]}"
 if test -e "$namecoin_name"
 then
   echo "WARNING: provided namecoin name '$namecoin_name' is a local file" 1>&2
 fi
 shift
-if test -e "$1"
+if test "${1%%=*}" == "-rpcpasswordfile"
 then
-  if ! test -r "$1"
+  namecoin_passfile="${1#*=}"
+  if ! test -r "$namecoin_passfile"
   then
-    echo "ERROR: Cannot read from '$1'" 1>&2
+    echo "ERROR: Cannot read from '$namecoin_passfile'" 1>&2
     exit 2
   fi
-  namecoin_pass="-rpcpassword=$(cat $1)"
+  namecoin_pass="-rpcpassword=$(cat "$namecoin_passfile")"
   shift
+fi
+if test "${1%%=*}" == "-spooldir"
+then
+  spooldir="${1#*=}"
+  shift
+else
+  spooldir="."
+fi
+if ! test -w "$spooldir" -a -d "$spooldir"
+then
+  echo "ERROR: Cannot write to '$spooldir' as a directory" 1>&2
+  exit 2
+fi
+if test "${1%%=*}" == "-walletpassphrasefile"
+then
+  namecoin_passphrasefile="${1#*=}"
+  if ! test -r "$namecoin_passphrasefile"
+  then
+    echo "ERROR: Cannot read from '$namecoin_passphrasefile'" 1>&2
+    exit 2
+  fi
+  namecoin_passphrase="$(cat "$namecoin_passphrasefile")"
+  shift
+else
+  namecoin_passphrase=""
 fi
 
 __namecoin_wrapped_UVFY_OUTPUT_PRESENTATION_MODE="$UVFY_OUTPUT_PRESENTATION_MODE"
@@ -28,7 +54,11 @@ then
   namecoin_cli_options="$(uvfy_flatlist_appended "$namecoin_cli_options" "$namecoin_pass")"
 fi
 
-if uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" getwalletinfo)" | grep '"unlocked_until": 0,'
+if test -n "$namecoin_passphrase" && ! uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" walletpassphrase "$namecoin_passphrase" 5)"
+then
+  echo 'ERROR: Failed to unlock wallet with provided passphrase'
+  exit 2
+elif uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" getwalletinfo)" | grep '"unlocked_until": 0,'
 then
   echo 'ERROR: Wallet is locked' 1>&2
   exit 2
@@ -51,6 +81,10 @@ uvfy_output_present_namecoin() {
   fi
   namecoin_value="$(cat "$UVFY_OUTPUT_FILE")"
   namecoin_success_token="${UVFY_OUTPUT_FILE##*/}"
+  if test -n "$namecoin_passphrase"
+  then
+    uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" walletpassphrase "$namecoin_passphrase" 5)"
+  fi
   echo -n "store-namecoin: " 1>&2
   uvfy_with_flatlist_parameters namecoin-cli "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")"
   case $? in
@@ -65,17 +99,32 @@ uvfy_output_present_namecoin() {
       namecoin_shell_script=namecoin_"${UVFY_OUTPUT_FILE##*/}".sh
       namecoin_name="${namecoin_name//'/'\"'\"'}"
       namecoin_value="${namecoin_value//'/'\"'\"'}"
-      cat <<EOF >> "$namecoin_shell_script"
-while ! namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")")
+      if test -n "$namecoin_passphrase"
+      then
+        namecoin_unlock="namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" walletpassphrase "$namecoin_passphrase" 5)")"
+      else
+        namecoin_unlock=""
+      fi
+      cat <<EOF >> "$spooldir/$namecoin_shell_script"
+passphrase="$namecoin_passphrase"
+while true
 do
+  $namecoin_unlock
+  if namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_update "$namecoin_name" "$namecoin_value")")
+  then
+    break;
+  fi
   sleep 60
 done
 namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_pending)") | grep -q "$namecoin_success_token" ||
 namecoin-cli $(uvfy_with_flatlist_parameters uvfy_namecoin_quote_args "$(uvfy_flatlist_appended "$namecoin_cli_options" name_show "$namecoin_name")") | grep -q "$namecoin_success_token" &&
 rm -f "\$(type -p "\$0")"
 EOF
-      chmod 555 "$namecoin_shell_script"
-      echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2
+      chmod 555 "$spooldir/$namecoin_shell_script"
+      if test "$spooldir" == "."
+      then
+        echo "PLEASE RUN IN ORDER: $namecoin_shell_script" 1>&2
+      fi
       return 0
       ;;
   esac

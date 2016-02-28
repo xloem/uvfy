@@ -24,7 +24,7 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.2.5-dev  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.2.5  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {

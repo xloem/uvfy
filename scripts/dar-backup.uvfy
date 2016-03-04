@@ -36,7 +36,7 @@ then
   UVFY_OUTPUT_DAR_VERSION=1
   uvfy_cmdoutput dar::dar.version -V
 fi
-uvfy_cmdoutput dar $DAR_CREATE_OPTIONS $DAR_OPTIONS -3sha512 -c"$DAR_BASENAME" -R"$DAR_FS_ROOT" ${DAR_REFERENCE:+-A"$DAR_REFERENCE"}
+uvfy_cmdoutput dar $DAR_CREATE_OPTIONS $DAR_OPTIONS -3sha512 -c"$DAR_BASENAME" -R"$DAR_FS_ROOT" ${DAR_REFERENCE:+-A"$DAR_REFERENCE" -asecu}
 uvfy_write_cmd "${DAR_BASENAME}.xml" dar $DAR_OPTIONS -l"$DAR_BASENAME" -Txml
 uvfy_filehashes ${DAR_REFERENCE:+"${DAR_REFERENCE}".*.dar} "$DAR_BASENAME"*.dar "$DAR_BASENAME"*.xml
 uvfy_cmdoutput sha512sum -c "$DAR_BASENAME"*.dar.sha512

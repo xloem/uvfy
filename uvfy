@@ -24,7 +24,7 @@
 
 SCRIPTNAME="uvfy"
 uvfy_version() {
-  echo "$SCRIPTNAME 0.2.6-dev  https://github.com/xloem/uvfy"
+  echo "$SCRIPTNAME 0.2.7-dev  https://github.com/xloem/uvfy"
 }
 
 uvfy_help() {
@@ -87,7 +87,7 @@ fi
 if ! (
   cd "$UVFY_HOME"
   sha512sum -c <<EOF >/dev/null
-bcfae8b4e8b5a75a2dfc0868a3fe4fc73604aec3f69172cf7f1017ee5a59e5dcd6d9e1b509152db247dd6e36b4668a4c1c5760be7ce8f3de510bd86b3468212b  scripts/dar-backup.uvfy
+8374a999ca0069279655e22af0f2081dad92d260b2b20f3d0bebbd3edd3eda32df586bec83b7a5612bbff7d870867edb968871f9985ab72610f2652f563384ff  scripts/dar-backup.uvfy
 f4aabde48116db67f13b6413a396c5ee7b805f3bb2a928434741323ab47d999575b35327681ac15b77987c5da87a3a31e5261d55eb3c7e0d79d06ee20d4cff18  scripts/git-add-commit.uvfy
 c4e1bb799dd02c957c12bd2a3c005a9ba8e0950c1c8957b86887670cb7cbd467110324739e355890bade6d309f4417c7cdea42b7c56263aa3b360926efba6382  scripts/git-status.uvfy
 e6caeed526a7fc90da5a9c6b1434523a6774b944181ca4cb7cb5a449e572b89914fe6ea76d331ca43ec46fb88a0252c4004cdff090f19b453f7377c3340ed219  scripts/invocation.uvfy
